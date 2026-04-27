@@ -3,7 +3,8 @@ import torch
 import matplotlib.pyplot as plt
 from PIL import Image
 import torchvision.transforms as transforms
-
+from torch.utils.data import DataLoader
+from dataset import MelanomaDataset
 # ==========================================
 # CONFIGURATION
 # ==========================================
@@ -108,5 +109,30 @@ axes[3].set_title("Canal Bleu")
 axes[3].axis("off")
 
 plt.suptitle(f"Forme du tenseur : {img_tensor.shape}", fontsize=13)
+plt.tight_layout()
+plt.show()
+transform_base = transforms.Compose([
+    transforms.ToTensor()
+])
+train_dataset= MelanomaDataset(TRAIN_DIR, transform = transform_base)
+val_dataset = MelanomaDataset(TEST_DIR, transform = transform_base)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0)
+val_loader   = DataLoader(val_dataset,   batch_size=32, shuffle=False, num_workers=0)
+images_batch, labels_batch = next(iter(train_loader))
+print(f"Forme du batch : {images_batch.shape}")
+print(f"Forme des labels : {labels_batch.shape}")
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(2, 4, figsize=(12, 6))
+axes = axes.flatten()
+
+for i in range(8):
+    img = images_batch[i].permute(1, 2, 0).numpy()
+    label = train_dataset.classes[labels_batch[i].item()]
+    axes[i].imshow(img)
+    axes[i].set_title(label)
+    axes[i].axis("off")
+
+plt.suptitle("Un batch du train loader")
 plt.tight_layout()
 plt.show()
