@@ -136,3 +136,72 @@ for i in range(8):
 plt.suptitle("Un batch du train loader")
 plt.tight_layout()
 plt.show()
+from model import SimpleCNN
+
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+model = SimpleCNN(num_classes=2).to(device)
+print(model)
+def compter_parametres(model):
+    total = sum(p.numel() for p in model.parameters())
+    entrainables = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Paramètres total : {total:,}")
+    print(f"Paramètres entraînables : {entrainables:,}")
+
+compter_parametres(model)
+import torch.nn as nn
+import torch.optim as optim
+import time
+from train import train_one_epoch, evaluate
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+NUM_EPOCHS = 20
+history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+
+print("Lancement de l'entraînement...")
+
+for epoch in range(1, NUM_EPOCHS + 1):
+    t0 = time.time()
+    train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+    val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+    duree = time.time() - t0
+
+    history["train_loss"].append(train_loss)
+    history["val_loss"].append(val_loss)
+    history["train_acc"].append(train_acc)
+    history["val_acc"].append(val_acc)
+
+    print(f"Epoch {epoch:2d}/{NUM_EPOCHS} | "
+          f"Loss train {train_loss:.4f} | Loss val {val_loss:.4f} | "
+          f"Acc train {train_acc:.3f} | Acc val {val_acc:.3f} | "
+          f"{duree:.1f}s")
+# ==========================================
+# COURBES D'APPRENTISSAGE
+# ==========================================
+epochs = range(1, NUM_EPOCHS + 1)
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+# Courbe de la Loss
+ax1.plot(epochs, history["train_loss"], label="Train", color='steelblue')
+ax1.plot(epochs, history["val_loss"], label="Validation", color='tomato')
+ax1.set_xlabel("Epoch")
+ax1.set_ylabel("Loss")
+ax1.set_title("Loss")
+ax1.legend()
+ax1.grid(alpha=0.3)
+
+# Courbe de l'Accuracy
+ax2.plot(epochs, history["train_acc"], label="Train", color='steelblue')
+ax2.plot(epochs, history["val_acc"], label="Validation", color='tomato')
+ax2.set_xlabel("Epoch")
+ax2.set_ylabel("Accuracy")
+ax2.set_title("Accuracy")
+ax2.legend()
+ax2.grid(alpha=0.3)
+ax2.set_ylim(0, 1)
+
+plt.suptitle("CNN Simple — 20 epochs")
+plt.tight_layout()
+plt.savefig("courbes_cnn_simple.png", dpi=150)
+plt.show()
