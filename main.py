@@ -201,7 +201,12 @@ ax2.legend()
 ax2.grid(alpha=0.3)
 ax2.set_ylim(0, 1)
 
-plt.suptitle("CNN Simple — 20 epochs")
-plt.tight_layout()
-plt.savefig("courbes_cnn_simple.png", dpi=150)
-plt.show()
+from transforms import calculer_mean_std
+from dataset import MelanomaDataset
+
+# Calcul des stats sur le train set uniquement
+dataset_stats = MelanomaDataset(TRAIN_DIR, 
+                    transform=transforms.ToTensor())
+MEAN, STD = calculer_mean_std(dataset_stats)
+print(f"Mean : {MEAN}")
+print(f"Std  : {STD}")
