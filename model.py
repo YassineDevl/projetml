@@ -36,3 +36,19 @@ class SimpleCNN(nn.Module):
         x = self.bloc3(x)
         x = self.classificateur(x)
         return x
+import torch.nn as nn
+from torchvision import models
+
+def charger_resnet_gele(num_classes):
+    # Charger ResNet18 pré-entraîné sur ImageNet
+    resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+    
+    # Geler TOUS les paramètres du backbone
+    for param in resnet.parameters():
+        param.requires_grad = False
+    
+    # Remplacer la tête : Linear(512 → 1000) par Linear(512 → num_classes)
+    in_features = resnet.fc.in_features  # = 512
+    resnet.fc   = nn.Linear(in_features, num_classes)
+    
+    return resnet

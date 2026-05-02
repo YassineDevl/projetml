@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 from dataset import MelanomaDataset
-from model import SimpleCNN
+from model import SimpleCNN, charger_resnet_gele
 from train import train_one_epoch, evaluate
 from transforms import (calculer_mean_std, get_transform_normalise,
                         get_train_transform_aug, get_val_transform)
@@ -24,10 +24,13 @@ device     = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 NUM_EPOCHS = 20
 
 # FLAGS — mets True uniquement la partie que tu veux lancer
-ENTRAINER_PARTIE5 = False  # CNN simple sans normalisation
-ENTRAINER_PARTIE6 = False  # CNN avec normalisation
-ENTRAINER_PARTIE7 = False  # CNN avec augmentation
-ENTRAINER_PARTIE8 = True  # Comparaison optimiseurs
+ENTRAINER_PARTIE5  = False
+ENTRAINER_PARTIE6  = False
+ENTRAINER_PARTIE7  = False
+ENTRAINER_PARTIE8  = False
+ENTRAINER_PARTIE9  = False
+ENTRAINER_PARTIE11 = False
+ENTRAINER_PARTIE12 = True
 
 print(f"Device : {device}")
 
@@ -137,6 +140,7 @@ def compter_parametres(m):
     entrainables = sum(p.numel() for p in m.parameters() if p.requires_grad)
     print(f"Paramètres total       : {total:,}")
     print(f"Paramètres entraînables: {entrainables:,}")
+    print(f"Paramètres gelés       : {total - entrainables:,}")
 
 compter_parametres(model)
 
@@ -325,7 +329,6 @@ configs = [
     {"nom": "Adam lr=1e-4",        "optim": "adam", "lr": 1e-4, "momentum": 0.0},
     {"nom": "SGD lr=1e-2 mom=0.9", "optim": "sgd",  "lr": 1e-2, "momentum": 0.9},
 ]
-
 resultats = {}
 
 if ENTRAINER_PARTIE8:
@@ -348,7 +351,6 @@ if ENTRAINER_PARTIE8:
 
     epochs   = range(1, NUM_EPOCHS + 1)
     couleurs = ['steelblue', 'tomato', 'green']
-
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
     for (nom, hist), couleur in zip(resultats.items(), couleurs):
         ax1.plot(epochs, hist["val_loss"], label=nom, color=couleur)
@@ -372,8 +374,6 @@ if ENTRAINER_PARTIE8:
 # ==========================================
 # PARTIE 9 - LEARNING RATE SCHEDULER
 # ==========================================
-ENTRAINER_PARTIE9 = False
-
 history_sched = {"train_loss": [], "val_loss": [],
                  "train_acc": [],  "val_acc": []}
 lrs = []
@@ -392,38 +392,149 @@ if ENTRAINER_PARTIE9:
         val_loss, val_acc = evaluate(
             model_sched, val_loader_aug, criterion, device)
         duree = time.time() - t0
-
-        # Sauvegarder le lr AVANT le step
         lrs.append(optimizer_sched.param_groups[0]['lr'])
-        scheduler.step()  # IMPORTANT : après chaque epoch
-
+        scheduler.step()
         history_sched["train_loss"].append(train_loss)
         history_sched["val_loss"].append(val_loss)
         history_sched["train_acc"].append(train_acc)
         history_sched["val_acc"].append(val_acc)
-
         print(f"Epoch {epoch:2d}/{NUM_EPOCHS} | "
               f"Loss train {train_loss:.4f} | Loss val {val_loss:.4f} | "
               f"Acc train {train_acc:.3f} | Acc val {val_acc:.3f} | "
               f"LR {lrs[-1]:.2e} | {duree:.1f}s")
 
     epochs = range(1, NUM_EPOCHS + 1)
-
-    # Courbes accuracy avec/sans scheduler
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-    ax1.plot(epochs, history_aug["val_acc"],   label="Sans scheduler", color='tomato')
-    ax1.plot(epochs, history_sched["val_acc"], label="Avec scheduler", color='steelblue')
-    ax1.set_xlabel("Epoch"); ax1.set_ylabel("Val Accuracy")
-    ax1.set_title("Accuracy avec/sans scheduler")
+    ax1.plot(epochs, history_sched["train_acc"], label="Train",      color='steelblue')
+    ax1.plot(epochs, history_sched["val_acc"],   label="Validation", color='tomato')
+    ax1.set_xlabel("Epoch"); ax1.set_ylabel("Accuracy")
+    ax1.set_title("Accuracy — Avec scheduler")
     ax1.legend(); ax1.grid(alpha=0.3); ax1.set_ylim(0, 1)
-
-    # Évolution du learning rate
     ax2.plot(epochs, lrs, color='green', marker='o', markersize=4)
     ax2.set_xlabel("Epoch"); ax2.set_ylabel("Learning Rate")
     ax2.set_title("Évolution du Learning Rate")
-    ax2.set_yscale('log')  # échelle logarithmique
+    ax2.set_yscale('log')
     ax2.grid(alpha=0.3)
-
     plt.tight_layout()
     plt.savefig("courbes_scheduler.png", dpi=150)
+    plt.show()
+
+# ==========================================
+# PARTIE 11 - TRANSFER LEARNING RESNET18
+# ==========================================
+
+# Stats ImageNet — obligatoires pour ResNet pré-entraîné
+MEAN_IMAGENET = [0.485, 0.456, 0.406]
+STD_IMAGENET  = [0.229, 0.224, 0.225]
+
+train_loader_resnet = DataLoader(
+    MelanomaDataset(TRAIN_DIR,
+                    transform=get_train_transform_aug(MEAN_IMAGENET, STD_IMAGENET)),
+    batch_size=32, shuffle=True, num_workers=0)
+val_loader_resnet = DataLoader(
+    MelanomaDataset(TEST_DIR,
+                    transform=get_val_transform(MEAN_IMAGENET, STD_IMAGENET)),
+    batch_size=32, shuffle=False, num_workers=0)
+
+history_resnet = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+
+if ENTRAINER_PARTIE11:
+    resnet = charger_resnet_gele(num_classes=2).to(device)
+
+    print("\n--- ResNet18 gelé ---")
+    compter_parametres(resnet)
+
+    # On entraîne UNIQUEMENT la tête fc
+    optimizer_resnet = optim.Adam(resnet.fc.parameters(), lr=1e-3)
+
+    print("\nEntraînement ResNet18 (backbone gelé)...")
+    for epoch in range(1, NUM_EPOCHS + 1):
+        t0 = time.time()
+        train_loss, train_acc = train_one_epoch(
+            resnet, train_loader_resnet, criterion, optimizer_resnet, device)
+        val_loss, val_acc = evaluate(
+            resnet, val_loader_resnet, criterion, device)
+        duree = time.time() - t0
+        history_resnet["train_loss"].append(train_loss)
+        history_resnet["val_loss"].append(val_loss)
+        history_resnet["train_acc"].append(train_acc)
+        history_resnet["val_acc"].append(val_acc)
+        print(f"Epoch {epoch:2d}/{NUM_EPOCHS} | "
+              f"Loss train {train_loss:.4f} | Loss val {val_loss:.4f} | "
+              f"Acc train {train_acc:.3f} | Acc val {val_acc:.3f} | {duree:.1f}s")
+
+    epochs = range(1, NUM_EPOCHS + 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    ax1.plot(epochs, history_resnet["train_loss"], label="Train",      color='steelblue')
+    ax1.plot(epochs, history_resnet["val_loss"],   label="Validation", color='tomato')
+    ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
+    ax1.set_title("Loss — ResNet18 gelé")
+    ax1.legend(); ax1.grid(alpha=0.3)
+    ax2.plot(epochs, history_resnet["train_acc"], label="Train",      color='steelblue')
+    ax2.plot(epochs, history_resnet["val_acc"],   label="Validation", color='tomato')
+    ax2.set_xlabel("Epoch"); ax2.set_ylabel("Accuracy")
+    ax2.set_title("Accuracy — ResNet18 gelé")
+    ax2.legend(); ax2.grid(alpha=0.3); ax2.set_ylim(0, 1)
+    plt.tight_layout()
+    plt.savefig("courbes_resnet_gele.png", dpi=150)
+    plt.show()
+
+# ==========================================
+# PARTIE 12 - FINE-TUNING PARTIEL
+# ==========================================
+history_ft = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+
+if ENTRAINER_PARTIE12:
+    from torchvision import models
+
+    resnet_ft = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+    for param in resnet_ft.parameters():
+        param.requires_grad = False
+
+    resnet_ft.fc = nn.Linear(resnet_ft.fc.in_features, 2)
+    resnet_ft = resnet_ft.to(device)
+
+    # Dégeler layer4 + fc
+    for param in resnet_ft.layer4.parameters():
+        param.requires_grad = True
+
+    print("\n--- ResNet18 fine-tuning (layer4 + fc) ---")
+    compter_parametres(resnet_ft)
+
+    # LR différent pour layer4 et fc
+    optimizer_ft = optim.Adam([
+        {"params": resnet_ft.layer4.parameters(), "lr": 1e-4},
+        {"params": resnet_ft.fc.parameters(),     "lr": 1e-3},
+    ])
+
+    print("\nEntraînement ResNet18 fine-tuning...")
+    for epoch in range(1, NUM_EPOCHS + 1):
+        t0 = time.time()
+        train_loss, train_acc = train_one_epoch(
+            resnet_ft, train_loader_resnet, criterion, optimizer_ft, device)
+        val_loss, val_acc = evaluate(
+            resnet_ft, val_loader_resnet, criterion, device)
+        duree = time.time() - t0
+        history_ft["train_loss"].append(train_loss)
+        history_ft["val_loss"].append(val_loss)
+        history_ft["train_acc"].append(train_acc)
+        history_ft["val_acc"].append(val_acc)
+        print(f"Epoch {epoch:2d}/{NUM_EPOCHS} | "
+              f"Loss train {train_loss:.4f} | Loss val {val_loss:.4f} | "
+              f"Acc train {train_acc:.3f} | Acc val {val_acc:.3f} | {duree:.1f}s")
+
+    epochs = range(1, NUM_EPOCHS + 1)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    ax1.plot(epochs, history_resnet["val_loss"], label="ResNet gelé",    color='tomato')
+    ax1.plot(epochs, history_ft["val_loss"],     label="Fine-tuning",    color='steelblue')
+    ax1.set_xlabel("Epoch"); ax1.set_ylabel("Val Loss")
+    ax1.set_title("Comparaison Val Loss — Fine-tuning")
+    ax1.legend(); ax1.grid(alpha=0.3)
+    ax2.plot(epochs, history_resnet["val_acc"],  label="ResNet gelé",    color='tomato')
+    ax2.plot(epochs, history_ft["val_acc"],      label="Fine-tuning",    color='steelblue')
+    ax2.set_xlabel("Epoch"); ax2.set_ylabel("Val Accuracy")
+    ax2.set_title("Comparaison Val Accuracy — Fine-tuning")
+    ax2.legend(); ax2.grid(alpha=0.3); ax2.set_ylim(0, 1)
+    plt.tight_layout()
+    plt.savefig("courbes_finetuning.png", dpi=150)
     plt.show()
