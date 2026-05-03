@@ -29,8 +29,9 @@ ENTRAINER_PARTIE6  = False
 ENTRAINER_PARTIE7  = False
 ENTRAINER_PARTIE8  = False
 ENTRAINER_PARTIE9  = False
-ENTRAINER_PARTIE11 = False
+ENTRAINER_PARTIE11 = True
 ENTRAINER_PARTIE12 = True
+
 
 print(f"Device : {device}")
 
@@ -537,4 +538,238 @@ if ENTRAINER_PARTIE12:
     ax2.legend(); ax2.grid(alpha=0.3); ax2.set_ylim(0, 1)
     plt.tight_layout()
     plt.savefig("courbes_finetuning.png", dpi=150)
+    plt.show()
+    # ==========================================
+# PARTIE 13 - MATRICE DE CONFUSION
+# ==========================================
+from sklearn.metrics import confusion_matrix, classification_report
+import numpy as np
+
+ANALYSER_ERREURS = False
+
+if ANALYSER_ERREURS:
+    # Utiliser le meilleur modèle = resnet_ft
+    # Si tu n'as pas resnet_ft en mémoire, relance avec ENTRAINER_PARTIE12=True
+
+    # 1. Collecter toutes les prédictions sur la validation
+    resnet_ft.eval()
+    all_preds  = []
+    all_labels = []
+
+    with torch.no_grad():
+        for images, labels in val_loader_resnet:
+            images = images.to(device)
+            outputs = resnet_ft(images)
+            preds = outputs.argmax(dim=1).cpu().numpy()
+            all_preds.extend(preds)
+            all_labels.extend(labels.numpy())
+
+    all_preds  = np.array(all_preds)
+    all_labels = np.array(all_labels)
+
+    # 2. Matrice de confusion
+    cm = confusion_matrix(all_labels, all_preds)
+    print("\nMatrice de confusion :")
+    print(cm)
+    print("\nRapport de classification :")
+    print(classification_report(all_labels, all_preds,
+                                target_names=train_dataset.classes))
+
+    # Affichage visuel
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(cm, cmap='Blues')
+    plt.colorbar(im)
+    ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
+    ax.set_xticklabels(train_dataset.classes)
+    ax.set_yticklabels(train_dataset.classes)
+    ax.set_xlabel("Prédit"); ax.set_ylabel("Vrai")
+    ax.set_title("Matrice de confusion — ResNet fine-tuné")
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, str(cm[i, j]),
+                    ha='center', va='center',
+                    color='white' if cm[i, j] > cm.max()/2 else 'black',
+                    fontsize=16)
+    plt.tight_layout()
+    plt.savefig("matrice_confusion.png", dpi=150)
+    plt.show()
+
+    # 3. Afficher 8 exemples mal classés
+    erreurs_images  = []
+    erreurs_vrais   = []
+    erreurs_predits = []
+
+    resnet_ft.eval()
+    with torch.no_grad():
+        for idx in range(len(val_dataset_aug)):
+            img, label = val_dataset_aug[idx]
+            output = resnet_ft(img.unsqueeze(0).to(device))
+            pred   = output.argmax(dim=1).item()
+            if pred != label and len(erreurs_images) < 8:
+                erreurs_images.append(img)
+                erreurs_vrais.append(label)
+                erreurs_predits.append(pred)
+            if len(erreurs_images) == 8:
+                break
+
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    axes = axes.flatten()
+    for i in range(8):
+        img_aff = (erreurs_images[i] - erreurs_images[i].min()) / \
+                  (erreurs_images[i].max() - erreurs_images[i].min())
+        axes[i].imshow(img_aff.permute(1, 2, 0).numpy())
+        vrai   = train_dataset.classes[erreurs_vrais[i]]
+        predit = train_dataset.classes[erreurs_predits[i]]
+        axes[i].set_title(f"Vrai : {vrai}\nPrédit : {predit}", color='red')
+        axes[i].axis("off")
+    plt.suptitle("8 exemples mal classés")
+    plt.tight_layout()
+    plt.savefig("erreurs.png", dpi=150)
+    plt.show()
+
+    # 4. Afficher 8 exemples bien classés
+    bons_images  = []
+    bons_labels  = []
+
+    resnet_ft.eval()
+    with torch.no_grad():
+        for idx in range(len(val_dataset_aug)):
+            img, label = val_dataset_aug[idx]
+            output = resnet_ft(img.unsqueeze(0).to(device))
+            pred   = output.argmax(dim=1).item()
+            if pred == label and len(bons_images) < 8:
+                bons_images.append(img)
+                bons_labels.append(label)
+            if len(bons_images) == 8:
+                break
+
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    axes = axes.flatten()
+    for i in range(8):
+        img_aff = (bons_images[i] - bons_images[i].min()) / \
+                  (bons_images[i].max() - bons_images[i].min())
+        axes[i].imshow(img_aff.permute(1, 2, 0).numpy())
+        axes[i].set_title(f"Vrai : {train_dataset.classes[bons_labels[i]]}",
+                          color='green')
+        axes[i].axis("off")
+    plt.suptitle("8 exemples bien classés")
+    plt.tight_layout()
+    plt.savefig("bons_exemples.png", dpi=150)
+    plt.show()
+# ==========================================
+# PARTIE 13 - MATRICE DE CONFUSION
+# ==========================================
+from sklearn.metrics import confusion_matrix, classification_report
+import numpy as np
+
+ANALYSER_ERREURS = True
+
+if ANALYSER_ERREURS:
+    # Utiliser le meilleur modèle = resnet_ft
+    # Si tu n'as pas resnet_ft en mémoire, relance avec ENTRAINER_PARTIE12=True
+
+    # 1. Collecter toutes les prédictions sur la validation
+    resnet_ft.eval()
+    all_preds  = []
+    all_labels = []
+
+    with torch.no_grad():
+        for images, labels in val_loader_resnet:
+            images = images.to(device)
+            outputs = resnet_ft(images)
+            preds = outputs.argmax(dim=1).cpu().numpy()
+            all_preds.extend(preds)
+            all_labels.extend(labels.numpy())
+
+    all_preds  = np.array(all_preds)
+    all_labels = np.array(all_labels)
+
+    # 2. Matrice de confusion
+    cm = confusion_matrix(all_labels, all_preds)
+    print("\nMatrice de confusion :")
+    print(cm)
+    print("\nRapport de classification :")
+    print(classification_report(all_labels, all_preds,
+                                target_names=train_dataset.classes))
+
+    # Affichage visuel
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(cm, cmap='Blues')
+    plt.colorbar(im)
+    ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
+    ax.set_xticklabels(train_dataset.classes)
+    ax.set_yticklabels(train_dataset.classes)
+    ax.set_xlabel("Prédit"); ax.set_ylabel("Vrai")
+    ax.set_title("Matrice de confusion — ResNet fine-tuné")
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, str(cm[i, j]),
+                    ha='center', va='center',
+                    color='white' if cm[i, j] > cm.max()/2 else 'black',
+                    fontsize=16)
+    plt.tight_layout()
+    plt.savefig("matrice_confusion.png", dpi=150)
+    plt.show()
+
+    # 3. Afficher 8 exemples mal classés
+    erreurs_images  = []
+    erreurs_vrais   = []
+    erreurs_predits = []
+
+    resnet_ft.eval()
+    with torch.no_grad():
+        for idx in range(len(val_dataset_aug)):
+            img, label = val_dataset_aug[idx]
+            output = resnet_ft(img.unsqueeze(0).to(device))
+            pred   = output.argmax(dim=1).item()
+            if pred != label and len(erreurs_images) < 8:
+                erreurs_images.append(img)
+                erreurs_vrais.append(label)
+                erreurs_predits.append(pred)
+            if len(erreurs_images) == 8:
+                break
+
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    axes = axes.flatten()
+    for i in range(8):
+        img_aff = (erreurs_images[i] - erreurs_images[i].min()) / \
+                  (erreurs_images[i].max() - erreurs_images[i].min())
+        axes[i].imshow(img_aff.permute(1, 2, 0).numpy())
+        vrai   = train_dataset.classes[erreurs_vrais[i]]
+        predit = train_dataset.classes[erreurs_predits[i]]
+        axes[i].set_title(f"Vrai : {vrai}\nPrédit : {predit}", color='red')
+        axes[i].axis("off")
+    plt.suptitle("8 exemples mal classés")
+    plt.tight_layout()
+    plt.savefig("erreurs.png", dpi=150)
+    plt.show()
+
+    # 4. Afficher 8 exemples bien classés
+    bons_images  = []
+    bons_labels  = []
+
+    resnet_ft.eval()
+    with torch.no_grad():
+        for idx in range(len(val_dataset_aug)):
+            img, label = val_dataset_aug[idx]
+            output = resnet_ft(img.unsqueeze(0).to(device))
+            pred   = output.argmax(dim=1).item()
+            if pred == label and len(bons_images) < 8:
+                bons_images.append(img)
+                bons_labels.append(label)
+            if len(bons_images) == 8:
+                break
+
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    axes = axes.flatten()
+    for i in range(8):
+        img_aff = (bons_images[i] - bons_images[i].min()) / \
+                  (bons_images[i].max() - bons_images[i].min())
+        axes[i].imshow(img_aff.permute(1, 2, 0).numpy())
+        axes[i].set_title(f"Vrai : {train_dataset.classes[bons_labels[i]]}",
+                          color='green')
+        axes[i].axis("off")
+    plt.suptitle("8 exemples bien classés")
+    plt.tight_layout()
+    plt.savefig("bons_exemples.png", dpi=150)
     plt.show()
